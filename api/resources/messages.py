@@ -81,8 +81,16 @@ class Message(BaseMessage):
 
         if validate_owner(msg):
             message = models.Message.update(content = content).where(models.Message.id == id).execute()
-            
             return {'message': 'berhasil update data'}
+    
+    @jwt_required
+    def delete(self, id):
+        args = self.reqparse.parse_args()
+        msg = get_or_abort(id)
+
+        if validate_owner(msg):
+            message = models.Message.delete().where(models.Message.id == id).execute()
+            return {'message': 'berhasil menghapus data'}
 
 
 
