@@ -1,5 +1,6 @@
 from flask import jsonify, Blueprint, abort
 from flask_restful import Resource, Api, reqparse, fields, marshal, marshal_with
+from flask_jwt_extended import (JWTManager, jwt_required, create_access_token, get_jwt_identity)
 
 import models
 
@@ -17,7 +18,7 @@ def get_or_abort(id):
     else:
         return msg
 
-class MessageList(Resource):
+class BaseMessage(Resource):
     def __init__(self):
         self.reqparse = reqparse.RequestParser()
         self.reqparse.add_argument(
@@ -26,14 +27,9 @@ class MessageList(Resource):
             help     = 'Konten wajib ada',
             location = ['form', 'json']
         )
-        self.reqparse.add_argument(
-            'published_at',
-            required = True,
-            help     = 'Tanggal wajib ada',
-            location = ['form', 'json']
-        )
         super().__init__()
 
+class MessageList(BaseMessage):
     def get(self):
         # ambil data dari database
         # messages = {}
@@ -50,18 +46,43 @@ class MessageList(Resource):
 
         return {'messages': messages}
 
+    @jwt_required
     def post(self):
         args = self.reqparse.parse_args()
-        message = models.Message.create(**args)
-        # return jsonify({'success': True, 'message': message.content})
+        current_user = get_jwt_identity()
+        user = models.User.select().where(models.User.username == current_user).get()
+
+        message = models.Message.create(
+            content = args.get('content'),
+            user_id = user
+        )
         return marshal(message, message_fields)
 
+def validate_owner(msg):
+    current_user = get_jwt_identity()
+    user = models.User.select().where(models.User.username == current_user).get()
 
-class Message(Resource):
+    if msg.user_id == user:
+        return True
+    else:
+        abort(403)
+
+
+class Message(BaseMessage):
     @marshal_with(message_fields)
     def get(self, id):
-        message = models.Message.get_by_id(id)
         return get_or_abort(id)
+
+    @jwt_required
+    def put(self, id):
+        args = self.reqparse.parse_args()
+        content = args.get('content')
+        msg = get_or_abort(id)
+
+        if validate_owner(msg):
+            message = models.Message.update(content = content).where(models.Message.id == id).execute()
+            
+            return {'message': 'berhasil update data'}
 
 
 
